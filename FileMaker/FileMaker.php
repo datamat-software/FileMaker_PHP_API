@@ -827,7 +827,6 @@ class FileMaker
             $curlResponse = $this->eliminateContainerHeader($curlResponse);
         }
 
-        curl_close($curl);
         return $curlResponse;
     }
 
@@ -917,8 +916,6 @@ class FileMaker
         if ($curlError = curl_errno($curl)) {
             return $this->handleCurlError($curlError, $curl);
         }
-
-        curl_close($curl);
 
         $this->setClientWPCSessionCookie($curlResponse);
         if ($curlHeadersSent) {

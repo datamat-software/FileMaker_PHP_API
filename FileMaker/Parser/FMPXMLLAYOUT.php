@@ -69,11 +69,9 @@ class FMPXMLLAYOUT
                 xml_error_string(xml_get_error_code($this->xmlParser)),
                 xml_get_current_line_number($this->xmlParser)
             );
-            xml_parser_free($this->xmlParser);
             return $this->fm->returnOrThrowException($error);
         }
 
-        xml_parser_free($this->xmlParser);
         $this->xmlParser = null;
 
         if ($this->errorCode !== null) {
