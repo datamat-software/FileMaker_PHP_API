@@ -216,6 +216,21 @@ class FileMaker
         foreach ($options as $key => $value) {
             $this->setProperty($key, $value);
         }
+
+        $this->setCwpConfigProperties();
+    }
+
+    private function setCwpConfigProperties()
+    {
+        $cwpConfigKeys = ['locale', 'charset', 'prevalidate'];
+        $configPath = dirname(__FILE__) . '/../conf/filemaker-api.php';
+        if ((@include $configPath) && isset($__FM_CONFIG)) {
+            foreach ($cwpConfigKeys AS $cwpConfigKey) {
+                if (array_key_exists($cwpConfigKey, $__FM_CONFIG)) {
+                    $this->properties[$cwpConfigKey] = $__FM_CONFIG[$cwpConfigKey];
+                }                
+            }
+        }
     }
 
     /**
