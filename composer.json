@@ -14,7 +14,7 @@
     ],
     "autoload": {
         "psr-4": {
-            "airmoi\\FileMaker\\": "src/"
+            "airmoi\\FileMaker\\": "FileMaker/"
         }
     },
     "require-dev": {
