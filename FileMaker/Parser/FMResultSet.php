@@ -66,14 +66,23 @@ class FMResultSet
         if (empty($xml)) {
             return $this->fm->returnOrThrowException('Did not receive an XML document from the server.');
         }
+
         $this->xmlParser = xml_parser_create('UTF-8');
-        xml_set_object($this->xmlParser, $this);
+
+        // php8.4-safe: xml_set_object() removed -> use direct callables instead
         xml_parser_set_option($this->xmlParser, XML_OPTION_CASE_FOLDING, false);
         xml_parser_set_option($this->xmlParser, XML_OPTION_TARGET_ENCODING, 'UTF-8');
-        /** @psalm-suppress UndefinedFunction */
-        xml_set_element_handler($this->xmlParser, 'start', 'end');
-        /** @psalm-suppress UndefinedFunction */
-        xml_set_character_data_handler($this->xmlParser, 'cdata');
+
+        xml_set_element_handler(
+            $this->xmlParser,
+            [$this, 'start'],
+            [$this, 'end']
+        );
+        xml_set_character_data_handler(
+            $this->xmlParser,
+            [$this, 'cdata']
+        );
+
         if (!@xml_parse($this->xmlParser, $xml)) {
             return $this->fm->returnOrThrowException(
                 sprintf(
@@ -83,17 +92,21 @@ class FMResultSet
                 )
             );
         }
+
         xml_parser_free($this->xmlParser);
         unset($this->xmlParser);
+
         if (!empty($this->errorCode)) {
             return $this->fm->returnOrThrowException(null, $this->errorCode);
         }
+
         if (version_compare($this->serverVersion['version'], FileMaker::getMinServerVersion(), '<')) {
             return $this->fm->returnOrThrowException(
                 'This API requires at least version ' . FileMaker::getMinServerVersion()
                 . ' of FileMaker Server to run (detected ' . $this->serverVersion['version'] . ').'
             );
         }
+
         $this->isParsed = true;
         return true;
     }
@@ -114,17 +127,20 @@ class FMResultSet
         if ($this->result) {
             return true;
         }
+
         $result->layout = new Layout($this->fm);
         $this->setLayout($result->layout);
         $result->tableCount = $this->parsedHead['total-count'];
         $result->foundSetCount = $this->parsedFoundSet['count'];
         $result->fetchCount = $this->parsedFoundSet['fetch-size'];
+
         $records = [];
         foreach ($this->parsedResult as $recordData) {
             $record = new $recordClass($result->layout);
             $record->fields = $recordData['fields'];
             $record->recordId = $recordData['record-id'];
             $record->modificationId = $recordData['mod-id'];
+
             if ($recordData['children']) {
                 foreach ($recordData['children'] as $relatedSetName => $relatedRecords) {
                     $record->relatedSets[$relatedSetName] = [];
@@ -139,10 +155,13 @@ class FMResultSet
                     }
                 }
             }
+
             $records[] = $record;
         }
+
         $result->records = & $records;
         $this->result = & $result;
+
         return true;
     }
 
@@ -161,9 +180,11 @@ class FMResultSet
         if ($this->layout === $layout) {
             return true;
         }
+
         $layout->name = $this->parsedHead['layout'];
         $layout->database = $this->parsedHead['database'];
         $layout->table = $this->parsedHead['table'];
+
         foreach ($this->fieldList as $fieldInfos) {
             $field = new Field($layout);
             $field->name = $fieldInfos['name'];
@@ -172,6 +193,7 @@ class FMResultSet
             $field->maxRepeat = (int) $fieldInfos['max-repeat'];
             $field->result = $fieldInfos['result'];
             $field->type = $fieldInfos['type'];
+
             if ($fieldInfos['not-empty'] === 'yes') {
                 $field->validationRules[FileMaker::RULE_NOTEMPTY] = true;
                 $field->validationMask |= FileMaker::RULE_NOTEMPTY;
@@ -205,11 +227,14 @@ class FMResultSet
                 $field->validationRules[FileMaker::RULE_TIME_FIELD] = true;
                 $field->validationMask |= FileMaker::RULE_TIME_FIELD;
             }
+
             $layout->fields[$field->getName()] = $field;
         }
+
         foreach ($this->relatedSetNames as $relatedSetName => $fields) {
             $relatedSet = new RelatedSet($layout);
             $relatedSet->name = $relatedSetName;
+
             foreach ($fields as $fieldInfos) {
                 $field = new Field($layout);
                 $field->name = $fieldInfos['name'];
@@ -218,6 +243,7 @@ class FMResultSet
                 $field->maxRepeat = (int) $fieldInfos['max-repeat'];
                 $field->result = $fieldInfos['result'];
                 $field->type = $fieldInfos['type'];
+
                 if ($fieldInfos['not-empty'] === 'yes') {
                     $field->validationRules[FileMaker::RULE_NOTEMPTY] = true;
                     $field->validationMask |= FileMaker::RULE_NOTEMPTY;
@@ -251,13 +277,17 @@ class FMResultSet
                     $field->validationRules[FileMaker::RULE_TIME_FIELD] = true;
                     $field->validationMask |= FileMaker::RULE_TIME_FIELD;
                 }
+
                 $relatedSet->fields[$field->getName()] = $field;
             }
+
             $layout->relatedSets[$relatedSet->getName()] = $relatedSet;
         }
+
         $this->layout = $layout;
         return true;
     }
+
     /**
      * xml_parser start element handler
      *
@@ -268,6 +298,7 @@ class FMResultSet
     private function start($parser, $tag, $datas)
     {
         $datas = $this->fm->toOutputCharset($datas);
+
         switch ($tag) {
             case 'error':
                 $this->errorCode = $datas['code'];
