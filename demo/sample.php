@@ -3,11 +3,13 @@
 //header('Content-Type: text/plain');
 //error_reporting(E_ALL);
 
+require 'autoloader.php';
+
 use airmoi\FileMaker\FileMaker;
 use airmoi\FileMaker\FileMakerException;
 use airmoi\FileMaker\FileMakerValidationException;
 
-require __DIR__ . '/../autoloader.php';
+
 
 echo "==========================================" . PHP_EOL;
 echo " FILEMAKER API UNIT TEST" . PHP_EOL;
@@ -31,6 +33,7 @@ try {
     /* get layouts list */
     echo "Get layouts list...";
     $layouts = $fm->listLayouts();
+    print_r($layouts);
     if (sizeof($layouts) != 2) {
         echo '<span style="color:red">FAIL</span> !' . PHP_EOL;
         exit;
@@ -77,7 +80,7 @@ try {
 
     echo 'Get Related sets... ' . implode(', ', $layout->listRelatedSets()) . '... <span style="color:green">SUCCESS</span>' . PHP_EOL . PHP_EOL;
     echo 'Get Valuelists list... ' . implode(', ', $layout->listValueLists()) . '... <span style="color:green">SUCCESS</span>' . PHP_EOL . PHP_EOL;
-    echo 'Get a static value list...' . (sizeof($layout->getValueList("static list")) ? sizeof($layout->getValueList("static list")) . ' values retrived... <span style="color:green">SUCCESS</span>' : '<span style="color:red">FAIL</span>') . PHP_EOL . PHP_EOL;
+    echo 'Get a static value list...' . (sizeof($layout->getValueList("sample_list")) ? sizeof($layout->getValueList("sample_list")) . ' values retrived... <span style="color:green">SUCCESS</span>' : '<span style="color:red">FAIL</span>') . PHP_EOL . PHP_EOL;
     echo 'Get a static value list...' . (sizeof($layout->getValueListTwoFields("field value list")) ? sizeof($layout->getValueListTwoFields("field value list")) . ' values retrived... <span style="color:green">SUCCESS</span>' : '<span style="color:red">FAIL</span>') . PHP_EOL . PHP_EOL;
 
 
@@ -251,9 +254,9 @@ try {
    
     
    echo 'Get record container... ';
-   $container = base64_encode($fm->getContainerData($record->getField('container_field')));
-   echo "<img src='data:image/png;base64,$container' />";
-   echo (sizeof($container) > 0 ? '<span style="color:green">SUCCESS</span>' : '<span style="color:red">FAIL</span>'). PHP_EOL . PHP_EOL;
+   $container = $fm->getContainerData($record->getField('container_field'));
+   echo "<img src='data:image/png;base64,".base64_encode($container)."' />";
+   echo (! empty($container) ? '<span style="color:green">SUCCESS</span>' : '<span style="color:red">FAIL</span>'). PHP_EOL . PHP_EOL;
    
    echo 'Get simple field Value List... ';
    $list = $record->getFieldValueListTwoFields('text_field');

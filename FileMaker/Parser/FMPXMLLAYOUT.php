@@ -1,6 +1,6 @@
 <?php
 /**
- * @copyright Copyright (c) 2016 by 1-more-thing (http://1-more-thing.com) All rights reserved.
+ * @copyright Copyright (c) 2016 by 1-more-thing[](http://1-more-thing.com) All rights reserved.
  * @license BSD
  */
 namespace airmoi\FileMaker\Parser;
@@ -16,71 +16,77 @@ use airmoi\FileMaker\Object\Layout;
  */
 class FMPXMLLAYOUT
 {
-    /**
-     * @var FileMaker
-     */
-    private $fm;
+    private FileMaker $fm;
 
-    private $fields = [];
-    private $valueLists;
-    private $valueListTwoFields;
-    private $xmlParser;
-    private $isParsed = false;
-    private $fieldName;
-    private $valueList;
-    private $displayValue;
-    private $insideData;
+    private array $fields = [];
+    private ?array $valueLists = null;
+    private ?array $valueListTwoFields = null;
+    private $xmlParser = null;
+    private bool $isParsed = false;
+    private ?string $fieldName = null;
+    private ?string $valueList = null;
+    private ?string $displayValue = null;
+    private bool $insideData = false;
 
-    /**
-     *
-     * @param FileMaker $fm
-     */
+    private ?int $errorCode = null;   // wird im Original nirgends gesetzt – evtl. später sinnvoll
+
     public function __construct(FileMaker $fm)
     {
         $this->fm = $fm;
     }
 
     /**
-     *
      * @param string $xmlResponse
-     * @return boolean|FileMakerException
+     * @return bool|FileMakerException
      * @throws FileMakerException
      */
-    public function parse($xmlResponse)
+    public function parse(string $xmlResponse)
     {
-        if (empty($xmlResponse)) {
+        if ($xmlResponse === '') {
             return $this->fm->returnOrThrowException('Did not receive an XML document from the server.');
         }
+
         $this->xmlParser = xml_parser_create();
-        xml_set_object($this->xmlParser, $this);
+        
+        // Wichtig: xml_set_object() ist weg – direkt Callables übergeben
         xml_parser_set_option($this->xmlParser, XML_OPTION_CASE_FOLDING, false);
         xml_parser_set_option($this->xmlParser, XML_OPTION_TARGET_ENCODING, 'UTF-8');
-        /** @psalm-suppress UndefinedFunction */
-        xml_set_element_handler($this->xmlParser, 'start', 'end');
-        /** @psalm-suppress UndefinedFunction */
-        xml_set_character_data_handler($this->xmlParser, 'cdata');
-        if (!@xml_parse($this->xmlParser, $xmlResponse)) {
-            return $this->fm->returnOrThrowException(
-                sprintf(
-                    'XML error: %s at line %d',
-                    xml_error_string(xml_get_error_code($this->xmlParser)),
-                    xml_get_current_line_number($this->xmlParser)
-                )
+
+        xml_set_element_handler(
+            $this->xmlParser,
+            [$this, 'start'],
+            [$this, 'end']
+        );
+
+        xml_set_character_data_handler(
+            $this->xmlParser,
+            [$this, 'cdata']
+        );
+
+        if (!xml_parse($this->xmlParser, $xmlResponse, true)) {
+            $error = sprintf(
+                'XML error: %s at line %d',
+                xml_error_string(xml_get_error_code($this->xmlParser)),
+                xml_get_current_line_number($this->xmlParser)
             );
+            xml_parser_free($this->xmlParser);
+            return $this->fm->returnOrThrowException($error);
         }
+
         xml_parser_free($this->xmlParser);
-        if (!empty($this->errorCode)) {
+        $this->xmlParser = null;
+
+        if ($this->errorCode !== null) {
             return $this->fm->returnOrThrowException(null, $this->errorCode);
         }
+
         $this->isParsed = true;
         return true;
     }
 
     /**
-     * Add extended infos to a Layout object
-     *
      * @param Layout $layout
-     * @return FileMakerException
+     * @return bool|FileMakerException
      * @throws FileMakerException
      */
     public function setExtendedInfo(Layout $layout)
@@ -88,65 +94,70 @@ class FMPXMLLAYOUT
         if (!$this->isParsed) {
             return $this->fm->returnOrThrowException('Attempt to set extended information before parsing data.');
         }
-        $layout->valueLists = $this->valueLists;
-        $layout->valueListTwoFields = $this->valueListTwoFields;
+
+        $layout->valueLists = $this->valueLists ?? [];
+        $layout->valueListTwoFields = $this->valueListTwoFields ?? [];
+
         foreach ($this->fields as $fieldName => $fieldInfos) {
             try {
                 $field = $layout->getField($fieldName);
                 if (!FileMaker::isError($field)) {
-                    $field->styleType = $fieldInfos['styleType'];
-                    $field->valueList = $fieldInfos['valueList'] ? $fieldInfos['valueList'] : null;
+                    $field->styleType = $fieldInfos['styleType'] ?? null;
+                    $field->valueList  = !empty($fieldInfos['valueList']) ? $fieldInfos['valueList'] : null;
                 }
             } catch (\Exception $e) {
-                //Field may be missing when it is stored in a portal, ommit error
+                // Field may be missing (e.g. in portal) → silent
             }
         }
+
         return true;
     }
 
-    /**
-     * xml_parser start element handler
-     *
-     * @param resource $parser
-     * @param string $type
-     * @param array $datas
-     */
-    private function start($parser, $type, $datas)
+    private function start($parser, string $type, array $datas): void
     {
         $datas = $this->fm->toOutputCharset($datas);
+
         switch ($type) {
             case 'FIELD':
-                $this->fieldName = $datas['NAME'];
+                $this->fieldName = $datas['NAME'] ?? null;
                 break;
+
             case 'STYLE':
-                $this->fields[$this->fieldName]['styleType'] = $datas['TYPE'];
-                $this->fields[$this->fieldName]['valueList'] = $datas['VALUELIST'];
+                if ($this->fieldName !== null) {
+                    $this->fields[$this->fieldName] = [
+                        'styleType'  => $datas['TYPE'] ?? null,
+                        'valueList'  => $datas['VALUELIST'] ?? null,
+                    ];
+                }
                 break;
+
             case 'VALUELIST':
-                $this->valueLists[$datas['NAME']] = [];
-                $this->valueListTwoFields[$datas['NAME']] = [];
-                $this->valueList = $datas['NAME'];
+                $name = $datas['NAME'] ?? null;
+                if ($name !== null) {
+                    $this->valueLists[$name] = [];
+                    $this->valueListTwoFields[$name] = [];
+                    $this->valueList = $name;
+                }
                 break;
+
             case 'VALUE':
-                $this->displayValue = $datas['DISPLAY'];
-                $this->valueLists[$this->valueList][] = '';
+                $this->displayValue = $datas['DISPLAY'] ?? null;
+                if ($this->valueList !== null && $this->displayValue !== null) {
+                    $this->valueLists[$this->valueList][] = '';
+                }
                 break;
         }
+
         $this->insideData = false;
     }
 
-    /**
-     * xml_parser end element handler
-     *
-     * @param resource $parser
-     * @param string $type
-     */
-    private function end($parser, $type)
+    private function end($parser, string $type): void
     {
         switch ($type) {
             case 'FIELD':
                 $this->fieldName = null;
                 break;
+
             case 'VALUELIST':
                 $this->valueList = null;
                 break;
@@ -155,42 +166,39 @@ class FMPXMLLAYOUT
         $this->insideData = false;
     }
 
-    /**
-     * xml_parser character data handler (cdata)
-     *
-     * @param resource $parser
-     * @param string $datas
-     */
-    public function cdata($parser, $datas)
+    public function cdata($parser, string $data): void
     {
-        if ($this->valueList !== null && preg_match('|\S|', $datas)) {
-            if ($this->insideData) {
-                $value = $this->valueListTwoFields[$this->valueList][$this->displayValue];
-                $datas = $value . $datas;
-            }
-            $arrayVal = [$this->displayValue => $this->fm->toOutputCharset($datas)];
-            $this->associativeArrayPush($this->valueListTwoFields[$this->valueList], $arrayVal);
-            $valueListNum = count($this->valueLists[$this->valueList]) - 1;
-            $this->valueLists[$this->valueList][$valueListNum] .= $this->fm->toOutputCharset($datas);
-            $this->insideData = true;
+        if ($this->valueList === null || !preg_match('|\S|', $data)) {
+            return;
         }
+
+        $data = $this->fm->toOutputCharset($data);
+
+        if ($this->insideData && $this->displayValue !== null) {
+            // Anhängen an vorherigen Wert (Multi-Line)
+            $prev = &$this->valueListTwoFields[$this->valueList][$this->displayValue];
+            $prev .= $data;
+        } else {
+            $this->valueListTwoFields[$this->valueList][$this->displayValue] = $data;
+        }
+
+        $idx = count($this->valueLists[$this->valueList]) - 1;
+        $this->valueLists[$this->valueList][$idx] .= $data;
+
+        $this->insideData = true;
     }
 
     /**
-     * Add values to an existing array
-     *
      * @param array $array
      * @param array $values
-     * @return boolean
+     * @return array|bool
+     * @deprecated scheint im aktuellen Code gar nicht mehr benutzt zu werden
      */
-    public function associativeArrayPush(&$array, $values)
+    public function associativeArrayPush(array &$array, array $values)
     {
-        if (is_array($values)) {
-            foreach ($values as $key => $value) {
-                $array[$key] = $value;
-            }
-            return $array;
+        foreach ($values as $key => $value) {
+            $array[$key] = $value;
         }
-        return false;
+        return $array;
     }
 }
