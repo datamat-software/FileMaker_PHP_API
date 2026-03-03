@@ -223,7 +223,7 @@ class FileMaker
     private function setCwpConfigProperties()
     {
         $cwpConfigKeys = ['locale', 'charset', 'prevalidate'];
-        $configPath = dirname(__FILE__) . '/../conf/filemaker-api.php';
+        $configPath = dirname(__FILE__) . '/conf/filemaker-api.php';
         if ((@include $configPath) && isset($__FM_CONFIG)) {
             foreach ($cwpConfigKeys AS $cwpConfigKey) {
                 if (array_key_exists($cwpConfigKey, $__FM_CONFIG)) {
@@ -849,7 +849,8 @@ class FileMaker
         $restParams = $footPrint = [];
         foreach ($params as $option => $value) {
             if (($value !== true) && strtolower($this->getProperty('charset')) !== 'utf-8') {
-                $value = utf8_encode($value);
+                //utf_encode
+                $value = $this->convert_encoding($value, 'ISO-8859-1', 'UTF-8');
             }
             $restParams[] = urlencode($option) . ($value === true || $value == null ? '' : '=' . urlencode($value));
             $footPrint[] = $option . "=" . (preg_match('/\.value$/', $option) ? ":$option" : $value);
@@ -1099,7 +1100,31 @@ class FileMaker
         if (!is_string($value)) {
             return $value;
         }
-        return utf8_decode($value);
+        //utf8_decode
+        return $this->convert_encoding($value, 'UTF-8', 'ISO-8859-1');
+    }
+
+    /**
+     * Convert encoding of any string  (former: utf8_encode()/utf8_decode())
+     *
+     * @param string $string     input string
+     * @param string $from       encoding from $string ('ISO-8859-1' or 'Windows-1252')
+     * @param string $to         encoding $string to
+     * @return string            Konvertierter String (oder Original bei Fehlern)
+     */
+    function convert_encoding(string $string, string $from, string $to): string
+    {
+        if (!extension_loaded('mbstring')) {
+            if (function_exists('iconv')) {
+                return iconv($from, $to . '//IGNORE', $string) ?: $string;
+            }
+            return $string;
+        }
+
+        $result = mb_convert_encoding($string, $to, $from);
+
+        // mb_convert_encoding return false on error similiar to old encode/decode functions
+        return is_string($result) ? $result : $string;
     }
 
     /**
